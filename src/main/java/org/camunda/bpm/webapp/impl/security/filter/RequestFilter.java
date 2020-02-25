@@ -93,7 +93,8 @@ public class RequestFilter {
    */
   protected final void setPattern(String pattern) {
 
-    String[] parts = pattern.split("/");
+    // only split at "/" that are not escaped by a "/"
+    String[] parts = pattern.split("(?<!/)/(?!/)");
 
     ArrayList<String> groupList = new ArrayList<String>();
 
@@ -104,6 +105,8 @@ public class RequestFilter {
       String group = null;
       String regex = part;
 
+      // remove esacped "/"
+      part = part.replace("//", "/");
       // parse group
       if (part.startsWith("{") && part.endsWith("}")) {
         String groupStr = part.substring(1, part.length() - 1);
@@ -115,7 +118,12 @@ public class RequestFilter {
 
         group = groupSplit[0];
         if (groupSplit.length > 1) {
-          regex = "(" + groupSplit[1] + ")";
+          String regexRaw = groupSplit[1];
+          if (regexRaw.startsWith("(")) {
+            regex = regexRaw;
+          } else {
+            regex = "(" + regexRaw + ")";
+          }
         } else {
           regex = "([^/]+)";
         }

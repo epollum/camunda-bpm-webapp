@@ -70,7 +70,7 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
   public static final String PLUGIN_DEPENDENCIES_PLACEHOLDER = "$PLUGIN_DEPENDENCIES";
   public static final String PLUGIN_PACKAGES_PLACEHOLDER = "$PLUGIN_PACKAGES";
 
-  public static Pattern APP_PREFIX_PATTERN = Pattern.compile("/app/(?:([\\w-]+?)/(?:(index\\.html|[\\w-]+)?/?([^?]*)?)?)?");
+  public static Pattern APP_PREFIX_PATTERN = Pattern.compile("(/[\\w-]+)?/app/(?:([\\w-]+?)/(?:(index\\.html|[\\w-]+)?/?([^?]*)?)?)?");
 
   protected final CockpitRuntimeDelegate cockpitRuntimeDelegate;
   protected final AdminRuntimeDelegate adminRuntimeDelegate;
@@ -88,7 +88,7 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
     this.adminRuntimeDelegate = Admin.getRuntimeDelegate();
     this.tasklistRuntimeDelegate = Tasklist.getRuntimeDelegate();
     this.welcomeRuntimeDelegate = Welcome.getRuntimeDelegate();
-    this.pluginPackageFormat = "{ name: '%s-plugin-%s', location: '%s/api/%s/plugin/%s/static/app', main: 'plugin.js' }";
+    this.pluginPackageFormat = "{ name: '%s-plugin-%s', location: '%s%s/api/%s/plugin/%s/static/app', main: 'plugin.js' }";
     this.pluginDependencyFormat = "{ ngModuleName: '%s.plugin.%s', requirePackageName: '%s-plugin-%s' }";
   }
 
@@ -101,9 +101,10 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
     Matcher uriMatcher = APP_PREFIX_PATTERN.matcher(requestUri);
 
     if (uriMatcher.matches()) {
-      String appName = uriMatcher.group(1);
-      String engineName = uriMatcher.group(2);
-      String pageUri = uriMatcher.group(3);
+      String prefix = uriMatcher.group(1);
+      String appName = uriMatcher.group(2);
+      String engineName = uriMatcher.group(3);
+      String pageUri = uriMatcher.group(4);
 
       // this happens on weblogic - /app/cockpit/index.html
       if (INDEX_PAGE.equals(engineName)) {
@@ -111,17 +112,17 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
       }
 
       if (pageUri == null || pageUri.isEmpty() || SETUP_PAGE.equals(pageUri)) {
-        serveIndexPage(appName, engineName, pageUri, contextPath, request, response, chain);
+        serveIndexPage(appName, engineName, pageUri, prefix, contextPath, request, response, chain);
         return;
       }
 
       if (INDEX_PAGE.equals(pageUri)) {
-        response.sendRedirect(String.format("%s/app/%s/%s/", contextPath, appName, engineName));
+        response.sendRedirect(String.format("%s%s/app/%s/%s/", contextPath, prefix, appName, engineName));
         return;
       }
 
       if (pageUri.endsWith(".html")) {
-        serveTemplate(requestUri, appName, pageUri, request, response, chain);
+        serveTemplate(requestUri, appName, pageUri, prefix, request, response, chain);
         return;
       }
 
@@ -130,20 +131,20 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
     chain.doFilter(request, response);
   }
 
-  protected void serveIndexPage(String appName, String engineName, String pageUri, String contextPath, HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
+  protected void serveIndexPage(String appName, String engineName, String pageUri, String prefix, String contextPath, HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
 
     // access to /
     if (appName == null) {
 
       // redirect to {defaultApp}/{defaultEngineName}
-      response.sendRedirect(String.format("%s/app/%s/%s/", contextPath, DEFAULT_APP, getDefaultEngineName()));
+      response.sendRedirect(String.format("%s%s/app/%s/%s/", contextPath, prefix, DEFAULT_APP, getDefaultEngineName()));
     } else
 
     // access to /app/
     // redirect to /app/{defaultEngineName}/
     if (engineName == null) {
       // redirect to {defaultApp}/{defaultEngineName}
-      response.sendRedirect(String.format("%s/app/%s/%s/", contextPath, appName, getDefaultEngineName()));
+      response.sendRedirect(String.format("%s%s/app/%s/%s/", contextPath, prefix, appName, getDefaultEngineName()));
     } else {
 
       // access to /app/{engineName}/
@@ -152,18 +153,18 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
       if (needsInitialUser(engineName)) {
         if (!setupPage) {
           // redirect to setup
-          response.sendRedirect(String.format("%s/app/admin/%s/setup/#/setup", contextPath, engineName));
+          response.sendRedirect(String.format("%s%s/app/admin/%s/setup/#/setup", contextPath, prefix, engineName));
         } else {
           // serve the index page as a setup page
           // setup will be handled by app
-          serveIndexPage(appName, engineName, contextPath, request, response);
+          serveIndexPage(appName, engineName, prefix, contextPath, request, response);
         }
       } else {
         if (!setupPage) {
           // correctly serving index page
-          serveIndexPage(appName, engineName, contextPath, request, response);
+          serveIndexPage(appName, engineName, prefix, contextPath, request, response);
         } else {
-          response.sendRedirect(String.format("%s/app/%s/%s/", contextPath, appName, engineName));
+          response.sendRedirect(String.format("%s%s/app/%s/%s/", contextPath, prefix, appName, engineName));
         }
       }
     }
@@ -188,7 +189,7 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
     }
   }
 
-  protected void serveTemplate(String requestUri, String appName, String pageUri, HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
+  protected void serveTemplate(String requestUri, String appName, String pageUri, String prefix, HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
 
     // check if resource exists
     if (hasWebResource(requestUri)) {
@@ -197,7 +198,7 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
       chain.doFilter(request, response);
     } else {
       // strip engine namespace and check if resource would exist
-      String cleanAppUri = String.format("/app/%s/%s", appName, pageUri);
+      String cleanAppUri = String.format("%s/app/%s/%s", prefix, appName, pageUri);
 
       if (hasWebResource(cleanAppUri)) {
         request.getRequestDispatcher(cleanAppUri).forward(request, response);
@@ -230,10 +231,10 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
 
   }
 
-  protected void serveIndexPage(String appName, String engineName, String contextPath, HttpServletRequest request, HttpServletResponse response) throws IOException {
+  protected void serveIndexPage(String appName, String engineName, String prefix, String contextPath, HttpServletRequest request, HttpServletResponse response) throws IOException {
     String data = getWebResourceContents("/app/" + appName + "/index.html");
 
-    data = replacePlaceholder(data, appName, engineName, contextPath, request, response);
+    data = replacePlaceholder(data, appName, engineName, prefix, contextPath, request, response);
 
     response.setContentLength(data.getBytes("UTF-8").length);
     response.setContentType("text/html");
@@ -241,14 +242,14 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
     response.getWriter().append(data);
   }
 
-  protected String replacePlaceholder(String data, String appName, String engineName, String contextPath, HttpServletRequest request, HttpServletResponse response) {
-    return data.replace(APP_ROOT_PLACEHOLDER, contextPath)
-               .replace(BASE_PLACEHOLDER, String.format("%s/app/%s/%s/", contextPath, appName, engineName))
-               .replace(PLUGIN_PACKAGES_PLACEHOLDER, createPluginPackagesStr(appName, contextPath))
+  protected String replacePlaceholder(String data, String appName, String engineName, String prefix, String contextPath, HttpServletRequest request, HttpServletResponse response) {
+    return data.replace(APP_ROOT_PLACEHOLDER, contextPath + prefix)
+               .replace(BASE_PLACEHOLDER, String.format("%s%s/app/%s/%s/", contextPath, prefix, appName, engineName))
+               .replace(PLUGIN_PACKAGES_PLACEHOLDER, createPluginPackagesStr(appName, prefix, contextPath))
                .replace(PLUGIN_DEPENDENCIES_PLACEHOLDER, createPluginDependenciesStr(appName));
   }
 
-  protected <T extends AppPlugin> CharSequence createPluginPackagesStr(String appName, String contextPath) {
+  protected <T extends AppPlugin> CharSequence createPluginPackagesStr(String appName, String prefix, String contextPath) {
     final List<T> plugins = getPlugins(appName);
 
     StringBuilder builder = new StringBuilder();
@@ -259,7 +260,7 @@ public class ProcessEnginesFilter extends AbstractTemplateFilter {
       }
 
       String pluginId = plugin.getId();
-      String definition = String.format(pluginPackageFormat, appName, pluginId, contextPath, appName, pluginId);
+      String definition = String.format(pluginPackageFormat, appName, pluginId, contextPath, prefix, appName, pluginId);
 
       builder.append(definition);
     }
